@@ -1,0 +1,15 @@
+# Compile fixture and local source example. No network or VoIP component.
+packages:
+  display: !include display-base.yaml
+
+external_components:
+  - source: ../esphome/components
+    components: [esp_video_renderer]
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - esp_video_renderer.start: incoming_video
+
+# A producer supplies complete baseline JPEGs through submit_jpeg(data, size).

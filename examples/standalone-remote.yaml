@@ -1,0 +1,14 @@
+# Run this from the repository's examples directory, or copy display-base.yaml
+# alongside this file. The renderer is fetched from its independent repository.
+packages:
+  display: !include display-base.yaml
+
+external_components:
+  - source: github://n-IA-hane/esphome-video-renderer@dev
+    components: [esp_video_renderer]
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - esp_video_renderer.start: incoming_video
