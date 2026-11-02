@@ -106,9 +106,11 @@ than requiring every source image to have that exact size. A portrait surface is
 also supported within the same area budget.
 
 The image buffers reserve `2 * max_jpeg_bytes + 4 * width * height` bytes.
-Defaults reserve 569,344 bytes, plus a 3,100-byte decoder workspace and an 8 KiB
-worker stack. A source-decoder build with `CONFIG_JD_FASTDECODE=2` uses a
-65,472-byte workspace instead. Task control structures stay in internal memory.
+Defaults reserve 569,344 bytes, plus a 3,100-byte ROM/basic decoder workspace and
+an 8 KiB worker stack. A portable decoder build with `CONFIG_JD_FASTDECODE=1`
+uses 3,488 bytes to accommodate 4:2:0 MCU storage with the default 512-byte
+stream buffer. `CONFIG_JD_FASTDECODE=2` uses 65,472 bytes instead. Task control
+structures stay in internal memory.
 LVGL buffers, your display driver, source acquisition and any transport or audio
 stack need their own budgets.
 

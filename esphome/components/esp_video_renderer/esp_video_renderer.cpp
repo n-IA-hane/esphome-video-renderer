@@ -15,6 +15,10 @@ namespace esphome::esp_video_renderer {
 static const char *const TAG = "esp_video_renderer";
 #if !CONFIG_JD_USE_ROM && CONFIG_JD_FASTDECODE == 2
 static constexpr size_t JPEG_WORKSPACE_BYTES = 65472;
+#elif !CONFIG_JD_USE_ROM && CONFIG_JD_FASTDECODE == 1
+// The portable 32-bit backend stores MCU samples as int16_t. 4:2:0 needs
+// 3480 bytes with its default 512-byte input buffer, beyond the ROM's arena.
+static constexpr size_t JPEG_WORKSPACE_BYTES = 3488;
 #else
 static constexpr size_t JPEG_WORKSPACE_BYTES = 3100;
 #endif
