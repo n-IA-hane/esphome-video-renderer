@@ -118,14 +118,14 @@ def test_slightly_early_two_fps_input_does_not_halve_output(admission_binary, sc
     assert result["admitted"] == result["attempts"]
 
 
-@pytest.mark.parametrize("fps", [1, 2, 5, 10, 15])
+@pytest.mark.parametrize("fps", [1, 2, 5, 10, 15, 30, 60])
 @pytest.mark.parametrize("scenario", [3, 6], ids=["ordinary-clock", "millis-wrap"])
 def test_nominal_cadence_with_two_ms_jitter_is_admitted(admission_binary, fps, scenario):
     result = run_case(admission_binary, fps, scenario)
     assert result["admitted"] == result["attempts"]
 
 
-@pytest.mark.parametrize("fps", [1, 2, 5, 10, 15])
+@pytest.mark.parametrize("fps", [1, 2, 5, 10, 15, 30, 60])
 def test_every_overload_window_respects_rate_and_two_frame_burst(admission_binary, fps):
     result = run_case(admission_binary, fps, 4)
     accepted = result["times"]

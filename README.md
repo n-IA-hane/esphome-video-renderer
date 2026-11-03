@@ -90,7 +90,7 @@ display integration without introducing an artificial transport.
 | --- | --- | --- |
 | `width` | `320` | Maximum decoded width, 8-640, multiple of 8. |
 | `height` | `240` | Maximum decoded height, 8-640, multiple of 8. |
-| `framerate` | `2` | Admission ceiling, 1-15 FPS. |
+| `framerate` | `2` | Configured admission ceiling, 1-60 FPS. Actual decode and display rates depend on the board and workload. |
 | `max_jpeg_bytes` | `131072` | Bytes in each compressed slot, 4096-524288. |
 | `task_core` | `any` | Worker affinity: `any`, `0` or `1`; the core must exist. |
 | `task_priority` | `5` | FreeRTOS worker priority, 1-24. |

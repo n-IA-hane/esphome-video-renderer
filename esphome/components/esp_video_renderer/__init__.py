@@ -67,7 +67,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(EspVideoRenderer),
             cv.Optional(CONF_WIDTH, default=320): cv.int_range(min=8, max=640),
             cv.Optional(CONF_HEIGHT, default=240): cv.int_range(min=8, max=640),
-            cv.Optional(CONF_FRAMERATE, default=2): cv.int_range(min=1, max=15),
+            cv.Optional(CONF_FRAMERATE, default=2): cv.int_range(min=1, max=60),
             cv.Optional(CONF_MAX_JPEG_BYTES, default=131072): cv.int_range(
                 min=4096, max=524288
             ),

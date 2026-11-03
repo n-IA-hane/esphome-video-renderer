@@ -137,6 +137,21 @@ def test_invalid_geometry_is_rejected_before_build(tmp_path, setting):
     assert "multiple of 8" in result.stdout or "at most 640x480" in result.stdout
 
 
+@pytest.mark.parametrize("framerate", [1, 30, 60])
+def test_renderer_codegen_accepts_explicit_native_framerate_envelope(tmp_path, framerate):
+    result = generate(tmp_path, renderer=f"  framerate: {framerate}\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    code = next(tmp_path.rglob("main.cpp")).read_text()
+    assert f"set_framerate({framerate})" in code
+
+
+@pytest.mark.parametrize("framerate", [0, 61])
+def test_renderer_rejects_framerate_outside_native_envelope(tmp_path, framerate):
+    result = generate(tmp_path, renderer=f"  framerate: {framerate}\n")
+    assert result.returncode != 0
+    assert "framerate" in result.stdout + result.stderr
+
+
 def test_renderer_codegen_applies_explicit_task_and_memory_choices(tmp_path):
     result = generate(tmp_path, renderer="""  task_core: 1
   task_priority: 7
