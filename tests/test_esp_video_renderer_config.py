@@ -117,6 +117,18 @@ voip_stack:
   id: phone
   microphone_source:
     microphone: mic
+  audio:
+    codecs:
+      - codec: pcm
+        tx:
+          - sample_rate: 16000
+            pcm_format: s16le
+            channels: 1
+            frame_ms: 20
+          - sample_rate: 16000
+            pcm_format: s16le
+            channels: 1
+            frame_ms: 10
   video:
     codec: jpeg
     sink: renderer_sink
@@ -128,6 +140,10 @@ voip_stack:
     code = next(tmp_path.rglob("main.cpp")).read_text()
     assert "esp_video_renderer::EspVideoRendererSink(renderer);" in code
     assert "phone->set_video_sink(renderer_sink)" in code
+    defines = next(tmp_path.rglob("defines.h")).read_text()
+    assert "USE_ESPHOME_VOIP_STACK_MIC" in defines
+    assert "USE_ESPHOME_VOIP_STACK_SPEAKER" not in defines
+    assert "phone->set_rx_audio_format(" not in code
 
 
 @pytest.mark.parametrize("setting", ["  width: 319\n", "  width: 640\n  height: 640\n"])
@@ -218,3 +234,6 @@ def test_documented_display_examples_generate_with_real_sources(tmp_path, exampl
     assert result.returncode == 0, result.stdout + result.stderr
     defines = next(tmp_path.rglob("defines.h")).read_text()
     assert ("USE_ESP_VIDEO_RENDERER_VOIP" in defines) == (example == "voip")
+    if example == "voip":
+        assert "USE_ESPHOME_VOIP_STACK_MIC" in defines
+        assert "USE_ESPHOME_VOIP_STACK_SPEAKER" not in defines

@@ -36,6 +36,18 @@ voip_stack:
   id: phone
   microphone_source:
     microphone: call_microphone
+  audio:
+    codecs:
+      - codec: pcm
+        tx:
+          - sample_rate: 16000
+            pcm_format: s16le
+            channels: 1
+            frame_ms: 20
+          - sample_rate: 16000
+            pcm_format: s16le
+            channels: 1
+            frame_ms: 10
   video:
     codec: jpeg
     sink: incoming_video_sink
