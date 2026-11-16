@@ -1,4 +1,4 @@
 esphome @ git+https://github.com/esphome/esphome.git@373224c141dceadbb67ace263040cbfc802c5968
 pytest==9.0.3
 ruff==0.15.21
-Pillow==12.3.0
+Pillow==13.0.0
