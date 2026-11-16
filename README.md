@@ -1,19 +1,23 @@
 # ESPHome Video Renderer
 
-A bounded baseline JPEG renderer for ESPHome and LVGL. An image producer supplies
-complete JPEGs, and `esp_video_renderer` decodes them to RGB565 and presents them
-inside an existing LVGL container. It owns decoder resources, scheduling and
-image lifetime. Your application owns the image source, display configuration,
+A bounded video renderer for ESPHome. An image producer supplies complete
+encoded frames. The software `esp_video_renderer` decodes JPEG to an LVGL image;
+`p4_video_renderer` uses hardware JPEG or software H.264 and a display-owned
+pixel transaction. The renderer owns decoder resources, scheduling and input
+lifetime. Your application owns the image source, display configuration,
 container and page navigation.
 
-**ESPHome 2026.10.0 or newer, ESP-IDF, ESP32-S3 or ESP32-P4, and LVGL are required.**
+**ESP-IDF, ESP32-S3 or ESP32-P4, and LVGL are required.** The coordinated
+development baseline uses complete official ESPHome commit
+`373224c141dceadbb67ace263040cbfc802c5968` (`2026.12.0.dev0`).
 The default configuration also requires working PSRAM. This repository has its
 own development version in [VERSION](VERSION) and history in
 [CHANGELOG.md](CHANGELOG.md).
 
 The component works without VoIP, SIP, RTP, Home Assistant, a camera or an HTTP
-server. An optional adapter connects the same renderer to the existing
-[ESPHome VoIP Stack](https://github.com/n-IA-hane/esphome-voip-stack) video sink.
+server. Adapters in
+[ESPHome VoIP Stack](https://github.com/n-IA-hane/esphome-voip-stack) connect the
+same renderer to that component's video sink.
 There is one rendering implementation in both configurations.
 
 ## Install and display JPEG images
@@ -24,7 +28,7 @@ Use the independent repository through ESPHome's native
 ```yaml
 external_components:
   - source: github://n-IA-hane/esphome-video-renderer@dev
-    components: [esp_video_renderer]
+    components: [video_renderer, esp_video_renderer]
 ```
 
 The `dev` branch tracks development. Pin a reviewed commit when reproducible
@@ -86,6 +90,10 @@ display integration without introducing an artificial transport.
 
 ## Configuration and budgets
 
+The following settings and software JPEG lifetime describe `esp_video_renderer`.
+The [P4 ownership contract](docs/MIGRATION_RENDERER_OWNERSHIP.md#display-presentation)
+describes the hardware renderer separately.
+
 | Option | Default | Contract |
 | --- | --- | --- |
 | `width` | `320` | Maximum decoded width, 8-640, multiple of 8. |
@@ -97,7 +105,6 @@ display integration without introducing an artificial transport.
 | `task_stack_size` | `8192` | Bytes, 4096-65536, multiple of 16. |
 | `task_stack_in_psram` | `true` | Reserve the worker stack in PSRAM. |
 | `buffer_in_psram` | `true` | Reserve JPEG slots, RGB surfaces and decoder workspace in PSRAM. |
-| `voip.id` | absent | Explicit optional VoIP `EncodedVideoSink` adapter. |
 | `on_first_frame` | absent | Automation when the session's first image is submitted to LVGL. |
 | `on_video_ended` | absent | Automation delivered in the main loop after deactivation. |
 
@@ -132,10 +139,11 @@ spending decoder time on detail that would be discarded.
 
 The decoder is Espressif's
 [`esp_jpeg` 1.3.2](https://components.espressif.com/components/espressif/esp_jpeg/versions/1.3.2/readme).
-The backend is software JPEG on both supported chips, using the vendor ROM
-implementation when its default configuration selects it. ESP32-P4's hardware
-JPEG/H.264 pipeline remains a separate component in VoIP Stack. This renderer
-supports complete single-scan baseline JPEGs, not progressive JPEG or H.264.
+This component uses software JPEG, including the vendor ROM implementation
+when selected by its default configuration. P4's hardware JPEG/software H.264
+renderer is the separate `p4_video_renderer` component in this repository, not
+in VoIP Stack. The software component supports complete single-scan baseline
+JPEGs, not progressive JPEG or H.264.
 
 Before decoding, the renderer validates bounded headers, geometry, tables, scan
 structure and the end marker. Native input is bounded to four times each output
@@ -177,7 +185,7 @@ Load the independent renderer and VoIP sources explicitly:
 ```yaml
 external_components:
   - source: github://n-IA-hane/esphome-video-renderer@dev
-    components: [esp_video_renderer]
+    components: [video_renderer, esp_video_renderer]
   - source: github://n-IA-hane/esphome-voip-stack@dev
     components: [voip_stack]
 
@@ -186,13 +194,11 @@ esp_video_renderer:
   width: 320
   height: 240
   framerate: 2
-  voip:
-    id: incoming_video_sink
 
 voip_stack:
   video:
     codec: jpeg
-    sink: incoming_video_sink
+    sink: incoming_video
     width: 320
     height: 240
     framerate: 2
@@ -204,15 +210,33 @@ microphone-only outgoing-audio/display example once Wi-Fi secrets and board pins
 are provided. Add a supported speaker and camera through VoIP Stack's own
 configuration when needed.
 
-The `voip:` block creates `EspVideoRendererSink` under
-`USE_ESP_VIDEO_RENDERER_VOIP`, using VoIP Stack's existing `EncodedVideoSink` and
-`EncodedVideoAccessUnit` interfaces. Standalone builds do not load or compile the
-VoIP component. An accepted leased access unit is copied and released by the
-adapter; a rejected unit remains the caller's responsibility. SIP/SDP negotiation,
-RTP, JPEG reassembly, camera acquisition and call lifecycle remain with their
-existing owners. This repository does not create a second media engine or call
-state machine. VoIP-specific image-size negotiation and wake-word policy belong
-to VoIP Stack and the application packages.
+`video.sink` references the renderer ID directly. VoIP Stack creates its own
+`S3RendererVideoSink` adapter and retains SIP/SDP negotiation, RTP reassembly and
+call lifecycle. The renderer receives a protocol-neutral complete frame. An
+accepted leased frame is copied and released by the renderer; a rejected frame
+remains the caller's responsibility. Standalone builds have no VoIP dependency.
+
+ESP32-P4 receive rendering lives in `p4_video_renderer` in this same repository.
+The S3 backend publishes an LVGL image. P4 uses a compatible MIPI display-owned
+pixel transaction without a video image. See the
+[ownership migration guide](docs/MIGRATION_RENDERER_OWNERSHIP.md) for custom
+configurations and the P4 component's resource and presentation contract.
+
+On P4, `display_id` selects a display advertising the public owned-transform
+capability. LVGL supplies page visibility and the logical container rectangle;
+the display owns RGB/YUV conversion, scale, rotation, framebuffer writes and
+serialization with UI drawing. JPEG retains its hardware-decoded RGB565 buffer;
+H.264 retains its existing decoder, packed-YUV conversion and IDR recovery.
+There is no second P4 `lv_image` presentation path. Renderer IDs and
+`attach_video_container` are unchanged; the redundant `display_rotation` field
+is accepted with a deprecation warning because rotation belongs to the display.
+
+The current coordinated P4 provider is a minimal adaptation of official ESPHome
+MIPI commit `c6f330458a2da2f64788487486bd6d0f8749fafd`, whose base matches
+the recorded ESPHome baseline. Profiles follow ESPHome's recommended SDK;
+exact supported SDK tags receive checksummed official build-local fixes
+rather than a framework pin.
+This source contract does not by itself qualify a physical panel or codec rate.
 
 ## Development and validation
 

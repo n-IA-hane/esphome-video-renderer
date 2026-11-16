@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      component_manifest:
+        description: Exact Intercom coordinated-sources.json for replay (blank follows dev/main)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,18 +25,56 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14.2"
+          python-version: "3.14"
       - run: python -m pip install -r requirements-dev.txt
+      - name: Select the hardware-source bootstrap from the coordinated manifest
+        id: bootstrap
+        env:
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !(endsWith(github.ref_name, '-dev') || contains(github.ref_name, '-dev.')))) && 'main' || 'dev' }}
+        run: python tools/ci_test_sources.py --channel "$COMPONENT_REF" --output test-results/source-bootstrap.json --github-output "$GITHUB_OUTPUT"
+      - name: Fetch only the generic MIPI hardware provider and its source validator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: n-IA-hane/esphome-intercom
+          ref: ${{ steps.bootstrap.outputs.backend_ref }}
+          path: .test-deps/esphome-intercom
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /esphome/components/mipi_dsi/
+            /esphome/components/p4_ppa_backport/
+            /scripts/coordinated_sources.py
+            /qualification/sources.json
+      - name: Validate selected sources with their existing authoritative validator
+        id: sources
+        env:
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !(endsWith(github.ref_name, '-dev') || contains(github.ref_name, '-dev.')))) && 'main' || 'dev' }}
+        run: >-
+          python tools/ci_test_sources.py --channel "$COMPONENT_REF"
+          --backend-source .test-deps/esphome-intercom
+          --output test-results/selected-sources.json --github-output "$GITHUB_OUTPUT"
       - name: Fetch the real optional VoIP contract
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: n-IA-hane/esphome-voip-stack
-          ref: dev
+          ref: ${{ steps.sources.outputs.voip_ref }}
           path: .test-deps/esphome-voip-stack
+          persist-credentials: false
+      - name: Record actual source identities used by the tests
+        env:
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !(endsWith(github.ref_name, '-dev') || contains(github.ref_name, '-dev.')))) && 'main' || 'dev' }}
+        run: >-
+          python tools/ci_test_sources.py --channel "$COMPONENT_REF"
+          --backend-source .test-deps/esphome-intercom --voip-source .test-deps/esphome-voip-stack
+          --output test-results/renderer-test-sources.json
       - run: python -m ruff check esphome tests tools
       - name: Test production renderer and optional adapter
         env:
           VOIP_STACK_SOURCE: ${{ github.workspace }}/.test-deps/esphome-voip-stack
+          MIPI_COMPONENTS_SOURCE: ${{ github.workspace }}/.test-deps/esphome-intercom/esphome/components
           VIDEO_ADMISSION_SANITIZE: "1"
         run: python -m pytest -q --junitxml=test-results/host.xml
       - name: Preserve host results
@@ -39,7 +82,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: renderer-host-results
-          path: test-results/host.xml
+          path: |
+            test-results/host.xml
+            test-results/*sources.json
+            test-results/source-bootstrap.json
           if-no-files-found: error
 
   firmware:
@@ -49,8 +95,8 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14.2"
-      - run: python -m pip install esphome==2026.10.0 Pillow==12.3.0
+          python-version: "3.14"
+      - run: python -m pip install "esphome @ git+https://github.com/esphome/esphome.git@373224c141dceadbb67ace263040cbfc802c5968" Pillow==12.3.0
       - name: Compile and link standalone ESP32-S3 display firmware
         run: |
           mkdir -p test-results
@@ -67,4 +113,76 @@ jobs:
         with:
           name: renderer-firmware-results
           path: test-results/
+          if-no-files-found: error
+
+  p4-firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Install the coordinated official ESPHome dependency
+        run: python -m pip install "esphome @ git+https://github.com/esphome/esphome.git@373224c141dceadbb67ace263040cbfc802c5968" Pillow==12.3.0
+      - name: Select the hardware-source bootstrap from the coordinated manifest
+        id: bootstrap
+        env:
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !(endsWith(github.ref_name, '-dev') || contains(github.ref_name, '-dev.')))) && 'main' || 'dev' }}
+        run: python tools/ci_test_sources.py --channel "$COMPONENT_REF" --output test-results/p4-source-bootstrap.json --github-output "$GITHUB_OUTPUT"
+      - name: Fetch the generic display provider and source validator
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: n-IA-hane/esphome-intercom
+          ref: ${{ steps.bootstrap.outputs.backend_ref }}
+          path: .test-deps/esphome-intercom
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /esphome/components/mipi_dsi/
+            /esphome/components/p4_ppa_backport/
+            /scripts/coordinated_sources.py
+            /qualification/sources.json
+      - name: Validate selected hardware sources with the authoritative validator
+        env:
+          COMPONENT_MANIFEST: ${{ inputs.component_manifest }}
+          COMPONENT_REF: ${{ (github.base_ref == 'main' || github.ref_name == 'main' || (github.ref_type == 'tag' && !(endsWith(github.ref_name, '-dev') || contains(github.ref_name, '-dev.')))) && 'main' || 'dev' }}
+        run: >-
+          python tools/ci_test_sources.py --channel "$COMPONENT_REF"
+          --backend-source .test-deps/esphome-intercom
+          --output test-results/p4-selected-sources.json
+      - name: Compile and link the P4 encoded-frame producer without VoIP
+        env:
+          MIPI_COMPONENTS_SOURCE: ${{ github.workspace }}/.test-deps/esphome-intercom/esphome/components
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          python -m esphome -s mipi_components_source "$MIPI_COMPONENTS_SOURCE" compile examples/p4-frame-input.yaml 2>&1 | tee test-results/p4-frame-input.log
+          python - <<'PYCODE'
+          from pathlib import Path
+          import hashlib, json, os
+          compiled = Path("examples/.esphome/build/p4-frame-input/src/esphome/components")
+          expected = Path(os.environ["MIPI_COMPONENTS_SOURCE"])
+          selected = {path.name for path in compiled.iterdir() if path.is_dir()}
+          assert {"video_renderer", "p4_video_renderer", "mipi_dsi"} <= selected
+          forbidden = {"voip_stack", "api", "wifi", "network", "microphone", "speaker", "esp_audio_stack", "esp_video_camera", "esp_h264_video_source"}
+          assert not selected & forbidden, sorted(selected & forbidden)
+          hashes = {}
+          for name in ("mipi_dsi.cpp", "mipi_dsi.h"):
+              actual = (compiled / "mipi_dsi" / name).read_bytes()
+              assert actual == (expected / "mipi_dsi" / name).read_bytes()
+              hashes[name] = hashlib.sha256(actual).hexdigest()
+          Path("test-results/p4-compiled-provider.json").write_text(json.dumps({"components": sorted(selected), "mipi_sha256": hashes}, indent=2) + "\n")
+          PYCODE
+      - name: Preserve standalone P4 compilation and source evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: renderer-p4-firmware-results
+          path: |
+            test-results/p4-frame-input.log
+            test-results/p4-*-sources.json
+            test-results/p4-source-bootstrap.json
+            test-results/p4-compiled-provider.json
           if-no-files-found: error

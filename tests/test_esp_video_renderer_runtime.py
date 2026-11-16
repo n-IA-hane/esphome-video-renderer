@@ -250,7 +250,7 @@ int main(int argc,char**argv){
         "g++", "-std=c++17", "-pthread", "-include", "cassert", "-Wall", "-Wextra",
         "-Werror", "-Wno-unused-variable", "-Wno-misleading-indentation",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-        "-I", str(tmp_path), "-I", str(SOURCE), str(SOURCE / "esp_video_renderer.cpp"),
+        "-I", str(tmp_path), "-I", str(ROOT), "-I", str(SOURCE), str(SOURCE / "esp_video_renderer.cpp"),
         str(harness), "-o", str(binary),
     ], check=True, capture_output=True, text=True)
     subprocess.run([str(binary), str(scenario)], check=True, capture_output=True, text=True, timeout=15)

@@ -4,7 +4,7 @@ packages:
 
 external_components:
   - source: ../esphome/components
-    components: [esp_video_renderer]
+    components: [video_renderer, esp_video_renderer]
 
 esphome:
   on_boot:

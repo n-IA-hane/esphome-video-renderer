@@ -1,4 +1,4 @@
-"""Bounded software JPEG renderer, optionally connected to VoIP."""
+"""Bounded protocol-neutral software JPEG renderer."""
 
 from esphome import automation
 import esphome.codegen as cg
@@ -11,17 +11,18 @@ from esphome.components.esp32 import (
     only_on_variant,
 )
 from esphome.components.lvgl.defines import add_lv_use
+from esphome.components import video_renderer
 from esphome.const import CONF_ID
 from esphome.core import CORE
 
 CODEOWNERS = ["@n-IA-hane"]
 DEPENDENCIES = ["esp32", "lvgl"]
+AUTO_LOAD = ["video_renderer"]
 
 CONF_WIDTH = "width"
 CONF_HEIGHT = "height"
 CONF_FRAMERATE = "framerate"
 CONF_MAX_JPEG_BYTES = "max_jpeg_bytes"
-CONF_VOIP = "voip"
 CONF_TASK_CORE = "task_core"
 CONF_TASK_PRIORITY = "task_priority"
 CONF_TASK_STACK_SIZE = "task_stack_size"
@@ -31,10 +32,7 @@ CONF_ON_FIRST_FRAME = "on_first_frame"
 CONF_ON_VIDEO_ENDED = "on_video_ended"
 
 ns = cg.esphome_ns.namespace("esp_video_renderer")
-EspVideoRenderer = ns.class_("EspVideoRenderer", cg.Component)
-# Declaring the optional interface type does not load the SIP component.
-EncodedVideoSink = cg.esphome_ns.namespace("voip_stack").class_("EncodedVideoSink")
-EspVideoRendererSink = ns.class_("EspVideoRendererSink", EncodedVideoSink)
+EspVideoRenderer = ns.class_("EspVideoRenderer", cg.Component, video_renderer.EncodedFrameRenderer)
 StartAction = ns.class_("StartAction", automation.Action)
 StopAction = ns.class_("StopAction", automation.Action)
 
@@ -76,9 +74,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_TASK_STACK_SIZE, default=8192): _stack_size,
             cv.Optional(CONF_TASK_STACK_IN_PSRAM, default=True): cv.boolean,
             cv.Optional(CONF_BUFFER_IN_PSRAM, default=True): cv.boolean,
-            cv.Optional(CONF_VOIP): cv.Schema(
-                {cv.GenerateID(): cv.declare_id(EspVideoRendererSink)}
-            ),
             cv.Optional(CONF_ON_FIRST_FRAME): automation.validate_automation(
                 single=True
             ),
@@ -96,13 +91,11 @@ CONFIG_SCHEMA = cv.All(
 def _final_validate(config):
     from esphome import final_validate as fv
 
+    if not CORE.using_toolchain_esp_idf:
+        raise cv.Invalid("esp_video_renderer requires the esp-idf framework")
     full = fv.full_config.get()
     if (config[CONF_TASK_STACK_IN_PSRAM] or config[CONF_BUFFER_IN_PSRAM]) and "psram" not in full:
         raise cv.Invalid("PSRAM placement requires the psram component; choose internal placement explicitly otherwise")
-    if CONF_VOIP in config:
-        phone = full.get("voip_stack", {})
-        if phone.get("video", {}).get("codec") != "jpeg":
-            raise cv.Invalid("esp_video_renderer.voip requires voip_stack video codec jpeg")
     return config
 
 
@@ -110,8 +103,6 @@ FINAL_VALIDATE_SCHEMA = _final_validate
 
 
 async def to_code(config):
-    if not CORE.using_toolchain_esp_idf:
-        raise cv.Invalid("esp_video_renderer requires the esp-idf framework")
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     for key in (CONF_WIDTH, CONF_HEIGHT, CONF_FRAMERATE, CONF_MAX_JPEG_BYTES,
@@ -123,9 +114,6 @@ async def to_code(config):
     if config[CONF_TASK_STACK_IN_PSRAM]:
         add_idf_sdkconfig_option("CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM", True)
     add_lv_use("image", "label")
-    if CONF_VOIP in config:
-        cg.add_define("USE_ESP_VIDEO_RENDERER_VOIP")
-        cg.new_Pvariable(config[CONF_VOIP][CONF_ID], var)
     for key, method in (
         (CONF_ON_FIRST_FRAME, "get_first_frame_trigger"),
         (CONF_ON_VIDEO_ENDED, "get_video_ended_trigger"),

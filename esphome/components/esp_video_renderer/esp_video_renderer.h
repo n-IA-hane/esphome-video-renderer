@@ -7,6 +7,7 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "jpeg_decoder.h"
+#include "esphome/components/video_renderer/video_renderer.h"
 #include "lvgl.h"
 #include <atomic>
 #include <cstddef>
@@ -18,8 +19,8 @@
 
 namespace esphome::esp_video_renderer {
 
-// Owns decoded images and their LVGL lifetime, without requiring SIP or RTP.
-class EspVideoRenderer : public Component {
+// Owns decoded images and their LVGL lifetime.
+class EspVideoRenderer : public Component, public video_renderer::EncodedFrameRenderer {
 public:
   void setup() override;
   void loop() override;
@@ -52,10 +53,24 @@ public:
   void attach_video_container(lv_obj_t *container);
   // prepare() reserves a new, initially hidden session. start() also activates
   // it.
+  video_renderer::RendererCapabilities get_capabilities() const override {
+    return {{video_renderer::Codec::JPEG, this->width_, this->height_, this->framerate_},
+            this->width_, this->height_, this->max_jpeg_bytes_, false};
+  }
+  bool prepare(const video_renderer::StreamFormat &format) override {
+    return format.valid() && format.codec == video_renderer::Codec::JPEG &&
+           format.width <= this->width_ && format.height <= this->height_ &&
+           this->prepare(format.max_fps);
+  }
+  bool submit_frame(const video_renderer::EncodedFrame &frame) override {
+    const bool accepted = this->submit_jpeg(frame.data, frame.size);
+    if (accepted) frame.release();
+    return accepted;
+  }
   bool prepare(uint8_t max_fps);
-  bool start();
-  bool set_active(bool active);
-  void stop();
+  bool start() override;
+  bool set_active(bool active) override;
+  void stop() override;
   // Data is borrowed only until this function returns, and is copied on
   // admission.
   bool submit_jpeg(const uint8_t *data, size_t size);
@@ -138,9 +153,5 @@ protected:
 };
 
 } // namespace esphome::esp_video_renderer
-
-#ifdef USE_ESP_VIDEO_RENDERER_VOIP
-#include "voip_adapter.h"
-#endif
 
 #endif // USE_ESP_IDF

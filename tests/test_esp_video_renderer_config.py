@@ -31,7 +31,7 @@ psram:
 logger:
 external_components:
   - source: SOURCE
-    components: [esp_video_renderer]VOIP_SOURCE
+    components: [video_renderer, esp_video_renderer]VOIP_SOURCE
 spi:
   clk_pin: GPIO4
   mosi_pin: GPIO2
@@ -98,7 +98,7 @@ def test_renderer_standalone_has_no_sip_dependency(tmp_path):
     assert "espressif/esp_new_jpeg" not in manifest["dependencies"]
 
 
-def test_renderer_voip_sink_is_explicit(tmp_path):
+def test_renderer_voip_sink_is_automatic(tmp_path):
     result = generate(tmp_path, """
 wifi:
   ssid: test-network
@@ -131,15 +131,15 @@ voip_stack:
             frame_ms: 10
   video:
     codec: jpeg
-    sink: renderer_sink
+    sink: renderer
     width: 320
     height: 240
     framerate: 2
-""", "  voip:\n    id: renderer_sink\n", ", voip_stack")
+""", "", ", voip_stack")
     assert result.returncode == 0, result.stdout + result.stderr
     code = next(tmp_path.rglob("main.cpp")).read_text()
-    assert "esp_video_renderer::EspVideoRendererSink(renderer);" in code
-    assert "phone->set_video_sink(renderer_sink)" in code
+    assert "voip_stack::S3RendererVideoSink(renderer);" in code
+    assert re.search(r"phone->set_video_sink\([A-Za-z_][A-Za-z_0-9]*\)", code)
     defines = next(tmp_path.rglob("defines.h")).read_text()
     assert "USE_ESPHOME_VOIP_STACK_MIC" in defines
     assert "USE_ESPHOME_VOIP_STACK_SPEAKER" not in defines
@@ -233,7 +233,7 @@ def test_documented_display_examples_generate_with_real_sources(tmp_path, exampl
     ], capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr
     defines = next(tmp_path.rglob("defines.h")).read_text()
-    assert ("USE_ESP_VIDEO_RENDERER_VOIP" in defines) == (example == "voip")
+    assert ("USE_ESPHOME_VOIP_STACK_VIDEO_RENDERER" in defines) == (example == "voip")
     if example == "voip":
         assert "USE_ESPHOME_VOIP_STACK_MIC" in defines
         assert "USE_ESPHOME_VOIP_STACK_SPEAKER" not in defines

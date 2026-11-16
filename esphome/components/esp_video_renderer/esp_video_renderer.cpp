@@ -172,7 +172,7 @@ bool EspVideoRenderer::submit_jpeg(const uint8_t *data, size_t size) {
   // Wall-clock token budget: preserve fractional cadence instead of resetting
   // the phase after each accepted frame. One slightly early arrival must not
   // halve the rate. Credit is bounded by the two existing input slots, so an
-  // idle interval cannot accumulate unbounded decoder work. RTP PTS is unused.
+  // idle interval cannot accumulate unbounded decoder work. JPEG uses arrival pacing.
   constexpr uint32_t FRAME_CREDIT = 1000;
   constexpr uint32_t MAX_CREDIT = 2 * FRAME_CREDIT;
   const uint32_t elapsed = now - this->last_admission_ms_;

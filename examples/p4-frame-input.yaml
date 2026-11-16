@@ -1,0 +1,154 @@
+# Complete P4 display example with a local encoded-frame producer.
+# Requires official ESPHome 373224c141dceadbb67ace263040cbfc802c5968 or newer.
+# Uses only the generic MIPI display provider, with no VoIP, network, API,
+# audio, camera or transport component.
+# Adapt panel/backlight wiring before considering a physical deployment.
+substitutions:
+  frame_input_build_path: .esphome/build/p4-frame-input
+  mipi_components_source: github://n-IA-hane/esphome-intercom@dev
+
+esphome:
+  name: p4-frame-input
+  min_version: 2026.12.0
+  build_path: ${frame_input_build_path}
+  includes:
+    - sample-frame.h
+  on_boot:
+    priority: -100
+    then:
+      - output.turn_on: panel_backlight
+
+esp32:
+  board: esp32-p4-evboard
+  variant: esp32p4
+  engineering_sample: true
+  flash_size: 32MB
+  cpu_frequency: 360MHz
+  framework:
+    type: esp-idf
+    # Follow the SDK recommended by the selected official ESPHome release.
+    advanced:
+      execute_from_psram: true
+
+psram:
+  mode: hex
+  speed: 200MHz
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../esphome/components
+    components: [video_renderer, p4_video_renderer]
+  - source: ${mipi_components_source}
+    components: [mipi_dsi, p4_ppa_backport]
+
+p4_ppa_backport:
+
+esp_ldo:
+  - channel: 3
+    voltage: 2.5V
+
+output:
+  - platform: gpio
+    id: panel_backlight
+    pin: GPIO26
+
+display:
+  - platform: mipi_dsi
+    id: panel
+    model: WAVESHARE-10.1-DSI-TOUCH-A
+    reset_pin: GPIO27
+    dimensions:
+      width: 800
+      height: 1280
+    auto_clear_enabled: false
+    update_interval: never
+
+globals:
+  - id: frame_attempts
+    type: uint32_t
+    restore_value: false
+    initial_value: "21"
+
+lvgl:
+  id: ui
+  displays: [panel]
+  color_depth: 16
+  byte_order: little_endian
+  rotation: 270
+  buffer_size: 25%
+  on_boot:
+    - lambda: |-
+        id(frame_renderer).attach_video_container(id(frame_surface));
+        lv_obj_update_layout(id(frame_surface));
+        const auto format = id(frame_renderer).get_capabilities().preferred;
+        // start() reuses this prepared format and calls set_active(true).
+        if (!id(frame_renderer).prepare(format) || !id(frame_renderer).start()) {
+          id(frame_renderer).stop();
+          ESP_LOGE("frame_input", "Renderer could not start");
+          return;
+        }
+        id(frame_attempts) = 0;
+  pages:
+    - id: frame_page
+      bg_color: 0x000000
+      widgets:
+        - obj:
+            id: frame_surface
+            width: 100%
+            height: 100%
+            pad_all: 0
+            border_width: 0
+            bg_opa: TRANSP
+            scrollable: false
+
+p4_video_renderer:
+  id: frame_renderer
+  codec: jpeg
+  width: 160
+  height: 120
+  framerate: 2
+  max_decode_width: 160
+  max_decode_height: 128
+  display_id: panel
+  on_first_frame:
+    - logger.log: First encoded frame presented
+
+# Producer ownership stays here. Replace this interval with your existing
+# producer callback and pass one complete JPEG per submit_frame() call.
+# No release callback means bytes are borrowed only during the call; the
+# renderer copies accepted JPEG data before returning. This static frame also
+# remains valid for the firmware lifetime. Presentation timestamps use us.
+interval:
+  - interval: 500ms
+    startup_delay: 3s
+    then:
+      - lambda: |-
+          if (id(frame_attempts) > 20)
+            return;
+          if (id(frame_attempts) == 20) {
+            id(stop_frame_input).execute();
+            return;
+          }
+          esphome::video_renderer::EncodedFrame frame{};
+          frame.data = p4_frame_input_sample::JPEG;
+          frame.size = sizeof(p4_frame_input_sample::JPEG);
+          frame.presentation_time = {uint64_t(id(frame_attempts)) * 500000ULL, true};
+          frame.key_frame = true;
+          frame.jpeg_info = {160, 120, esphome::video_renderer::JpegSampling::YUV420};
+          const bool accepted = id(frame_renderer).submit_frame(frame);
+          ESP_LOGI("frame_input", "Frame %u accepted=%s",
+                   unsigned(id(frame_attempts)), accepted ? "yes" : "no");
+          id(frame_attempts)++;
+
+# A producer can execute this same script when its stream ends. stop() calls
+# set_active(false), retires the prepared session and preserves component-owned
+# decoder resources. The demo attempts 20 frames once, then stops without retry.
+script:
+  - id: stop_frame_input
+    then:
+      - lambda: |-
+          id(frame_attempts) = 21;
+          id(frame_renderer).stop();
