@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -111,3 +112,55 @@ def test_p4_example_follows_core_sdk_and_acceleration_defaults():
     assert "sdkconfig_options" not in framework
     assert not example["esphome"].get("build_flags")
     assert "p4_ppa_backport" in example
+
+
+@pytest.mark.parametrize("unexpected", [False, True], ids=["same-absolute-path", "reject-voip"])
+def test_p4_compile_checker_uses_the_cli_build_path(tmp_path, unexpected):
+    """Execute CI wiring with a recorded compiler boundary, not an SDK build."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    step = next(item for item in workflow["jobs"]["p4-firmware"]["steps"]
+                if item.get("name") == "Compile and link the P4 encoded-frame producer without VoIP")
+    work = tmp_path / "work"
+    work.mkdir()
+    hardware = tmp_path / "hardware" / "mipi_dsi"
+    hardware.mkdir(parents=True)
+    for name in ("mipi_dsi.cpp", "mipi_dsi.h"):
+        (hardware / name).write_text("metadata fixture: " + name)
+    executables = tmp_path / "bin"
+    executables.mkdir()
+    launcher = executables / "python"
+    launcher.write_text(f"""#!{sys.executable}
+import json, os, shutil, sys
+from pathlib import Path
+if sys.argv[1:3] != ['-m', 'esphome']:
+    os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
+arguments = sys.argv[3:]
+substitutions = {{arguments[i + 1]: arguments[i + 2]
+                 for i, value in enumerate(arguments) if value == '-s'}}
+build = Path(substitutions['frame_input_build_path'])
+assert build.is_absolute() and build == Path(os.environ['RUNNER_TEMP']) / 'p4-frame-input'
+compiled = build / 'src/esphome/components'
+for component in ('video_renderer', 'p4_video_renderer', 'mipi_dsi'):
+    (compiled / component).mkdir(parents=True, exist_ok=True)
+for name in ('mipi_dsi.cpp', 'mipi_dsi.h'):
+    shutil.copyfile(Path(substitutions['mipi_components_source']) / 'mipi_dsi' / name,
+                    compiled / 'mipi_dsi' / name)
+if os.environ['CI_FIXTURE_UNEXPECTED'] == '1':
+    (compiled / 'voip_stack').mkdir()
+Path('compiler-command.json').write_text(json.dumps(sys.argv[1:]))
+""")
+    launcher.chmod(0o700)
+    result = subprocess.run(
+        ["bash", "-e", "-c", step["run"]], cwd=work,
+        env=dict(os.environ, PATH=str(executables) + os.pathsep + os.environ["PATH"],
+                 RUNNER_TEMP=str(tmp_path / "runner temp"),
+                 MIPI_COMPONENTS_SOURCE=str(hardware.parent),
+                 CI_FIXTURE_UNEXPECTED=str(int(unexpected))),
+        capture_output=True, text=True, timeout=10,
+    )
+    if unexpected:
+        assert result.returncode != 0
+        assert "voip_stack" in result.stderr
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (work / "test-results/p4-compiled-provider.json").is_file()

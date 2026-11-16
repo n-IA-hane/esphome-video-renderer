@@ -158,11 +158,12 @@ jobs:
         run: |
           mkdir -p test-results
           set -o pipefail
-          python -m esphome -s mipi_components_source "$MIPI_COMPONENTS_SOURCE" compile examples/p4-frame-input.yaml 2>&1 | tee test-results/p4-frame-input.log
+          export P4_FRAME_INPUT_BUILD_PATH="$RUNNER_TEMP/p4-frame-input"
+          python -m esphome -s mipi_components_source "$MIPI_COMPONENTS_SOURCE" -s frame_input_build_path "$P4_FRAME_INPUT_BUILD_PATH" compile examples/p4-frame-input.yaml 2>&1 | tee test-results/p4-frame-input.log
           python - <<'PYCODE'
           from pathlib import Path
           import hashlib, json, os
-          compiled = Path("examples/.esphome/build/p4-frame-input/src/esphome/components")
+          compiled = Path(os.environ["P4_FRAME_INPUT_BUILD_PATH"]) / "src/esphome/components"
           expected = Path(os.environ["MIPI_COMPONENTS_SOURCE"])
           selected = {path.name for path in compiled.iterdir() if path.is_dir()}
           assert {"video_renderer", "p4_video_renderer", "mipi_dsi"} <= selected
