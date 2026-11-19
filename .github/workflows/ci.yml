@@ -96,7 +96,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"
-      - run: python -m pip install "esphome @ git+https://github.com/esphome/esphome.git@373224c141dceadbb67ace263040cbfc802c5968" Pillow==13.0.0
+      - run: python -m pip install esphome==2026.11.0
       - name: Compile and link standalone ESP32-S3 display firmware
         run: |
           mkdir -p test-results
@@ -124,7 +124,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install the coordinated official ESPHome dependency
-        run: python -m pip install "esphome @ git+https://github.com/esphome/esphome.git@373224c141dceadbb67ace263040cbfc802c5968" Pillow==13.0.0
+        run: python -m pip install esphome==2026.11.0
       - name: Select the hardware-source bootstrap from the coordinated manifest
         id: bootstrap
         env:

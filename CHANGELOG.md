@@ -21,8 +21,8 @@
   camera or network. The producer owns frame timestamps and passes complete
   JPEG bytes through the renderer's normal API.
 
-Requires the coordinated official ESPHome development baseline documented in
-the README and the declared P4 display capability. Default-SDK receive-video
+The standalone P4 example requires ESPHome 2026.11.0 or newer and the
+declared P4 display capability. Default-SDK receive-video
 checks measured 9.696 and 9.941 FPS with a 10 FPS source. The repeat retained
 24 browser startup audio-playout drops and failed that strict probe. These
 bounded checks do not complete optical panel or acoustic qualification.

@@ -1,5 +1,4 @@
 # Complete P4 display example with a local encoded-frame producer.
-# Requires official ESPHome 373224c141dceadbb67ace263040cbfc802c5968 or newer.
 # Uses only the generic MIPI display provider, with no VoIP, network, API,
 # audio, camera or transport component.
 # Adapt panel/backlight wiring before considering a physical deployment.
@@ -9,7 +8,7 @@ substitutions:
 
 esphome:
   name: p4-frame-input
-  min_version: 2026.12.0
+  min_version: 2026.11.0
   build_path: ${frame_input_build_path}
   includes:
     - sample-frame.h
