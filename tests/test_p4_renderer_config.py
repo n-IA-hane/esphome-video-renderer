@@ -44,9 +44,48 @@ def test_p4_encoded_pixels_use_the_display_owned_capability(tmp_path, codec, cap
     assert result.returncode == 0, result.stdout + result.stderr
     generated = tmp_path / "build/src"
     main = (generated / "main.cpp").read_text()
-    cpp = (generated / "esphome/components/p4_video_renderer/p4_video_renderer.cpp").read_text()
+    component = generated / "esphome/components/p4_video_renderer"
+    presentation = (component / "p4_presentation.cpp").read_text()
+    cpp = "\n".join(path.read_text() for path in component.glob("*.cpp"))
     assert "frame_renderer->set_display(panel)" in main
-    assert "draw_rgb565_transformed" in cpp
+    assert "draw_rgb565_transformed" in presentation
     assert "lv_image_create(" not in cpp
     assert "lv_image_set_src(" not in cpp
     assert not list(generated.rglob("sip_transport.cpp"))
+
+
+def test_p4_scale_fits_bounds_and_rgb565_byte_budget(tmp_path):
+    source = tmp_path / "scale.cpp"
+    source.write_text(r"""
+#include "p4_presentation_geometry.h"
+#include <cassert>
+
+int main() {
+  using esphome::p4_video_renderer::fit_scale_units;
+  struct Size { int w, h; };
+  constexpr Size frames[] = {{320, 240}, {160, 120}, {640, 360}, {319, 239}, {800, 800}};
+  constexpr Size views[] = {{1280, 800}, {800, 1280}, {319, 239}, {80, 50}, {1, 1}};
+  constexpr size_t budgets[] = {0, 1, 4096, 639 * 479 * 2, 640 * 480 * 2, 800 * 800 * 2};
+  for (auto frame : frames) {
+    for (auto view : views) {
+      for (auto bytes : budgets) {
+        // Independently enumerate the hardware's discrete scale settings.
+        int best = 0;
+        for (int step = 1; frame.w * step <= view.w * 16 && frame.h * step <= view.h * 16; ++step) {
+          const size_t pixels = size_t(frame.w * step / 16) * (frame.h * step / 16);
+          if (pixels > 0 && pixels * 2 <= bytes)
+            best = step;
+        }
+        assert(fit_scale_units(frame.w, frame.h, view.w, view.h, bytes) == best);
+      }
+    }
+  }
+  assert(fit_scale_units(0, 120, 800, 800, 4096) == 0);
+  assert(fit_scale_units(160, 120, 0, 800, 4096) == 0);
+}
+""")
+    binary = tmp_path / "scale"
+    subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I",
+                    str(ROOT / "esphome/components/p4_video_renderer"), str(source),
+                    "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)

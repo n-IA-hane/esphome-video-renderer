@@ -110,6 +110,7 @@ protected:
   bool allocate_session_resources_();
 #ifdef USE_P4_VIDEO_RENDERER_JPEG
   bool init_jpeg_decoder_();
+  bool decode_jpeg_access_unit_(uint32_t session_generation);
   bool read_jpeg_picture_info_(const uint8_t *data, size_t size,
                                const video_renderer::JpegFrameInfo &frame_info,
                                jpeg_decode_picture_info_t *picture) const;
@@ -122,13 +123,14 @@ protected:
 #ifdef USE_P4_VIDEO_RENDERER_H264
   // H.264 Baseline Level 3.0 limits a decoded picture to 1620 macroblocks.
   static constexpr size_t kH264Level30MaxMacroblocks = 1620;
-  static constexpr uint16_t kPpaScaleUnits = 16;
   size_t h264_optimized_yuv_bytes_() const {
     return static_cast<size_t>(this->max_decode_width_) *
            this->max_decode_height_ * 3 / 2;
   }
   bool reset_h264_decoder_();
   bool h264_resolution_fits_(uint16_t width, uint16_t height) const;
+  bool consume_h264_nal_(esp_h264_dec_in_frame_t &input,
+                         esp_h264_dec_out_frame_t &output);
   bool decode_h264_access_unit_(const uint8_t *data, size_t size,
                                 uint64_t timestamp_us, bool timestamp_valid,
                                 bool key_frame, uint32_t session_generation,
@@ -148,6 +150,7 @@ protected:
   bool reap_rx_task_();
   static void display_refresh_ready_callback_(lv_event_t *event);
 #ifdef USE_P4_VIDEO_RENDERER_DEBUG
+  static void update_max(std::atomic<uint32_t> &maximum, uint32_t value);
   static void display_debug_callback_(lv_event_t *event);
   void on_display_debug_event_(lv_event_code_t code, const lv_area_t *area);
 #endif
