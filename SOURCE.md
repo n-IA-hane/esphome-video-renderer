@@ -5,8 +5,8 @@ The component was extracted mechanically from
 at commit `38b982cdd7102e094a228279b65600885a408b22`.
 The original path was `esphome/components/esp_video_renderer/`.
 
-All five Python/C++ component files are unchanged at extraction. The initial
-repository adds independent documentation, examples, requirements, version
+All five Python/C++ component files were unchanged at extraction. The initial
+repository added independent documentation, examples, requirements, version
 metadata, host tests and CI around that implementation. Focused tests and the
 pixel qualification tool came from the same source; test dependency discovery
 was adapted to the repository boundary.
@@ -16,9 +16,17 @@ the component commits to `n-IA-hane`; no new third-party authorship is claimed.
 `esp_jpeg`, ESPHome, LVGL and ESP-IDF are external dependencies downloaded by
 the builder and retain their own licensing.
 
-SIP/SDP/RTP, camera sources, hardware P4 rendering and call state remain outside
-this repository. Only `voip_adapter.h`, compiled by explicit configuration,
-depends on the existing VoIP Stack interface.
+At extraction, SIP/SDP/RTP, camera sources, hardware P4 rendering and call state
+remained outside this repository. The initial optional `voip_adapter.h` depended
+on the existing VoIP Stack interface.
+
+Current development provides both the software `esp_video_renderer` and the
+hardware P4 `p4_video_renderer` in this repository. VoIP Stack owns its protocol
+adapters, SIP/SDP/RTP and call lifecycle. The renderer receives complete encoded
+frames through its protocol-neutral API and delegates P4 presentation to the
+display owner. See the current [configuration and API guide](README.md) and
+[ownership migration guide](docs/MIGRATION_RENDERER_OWNERSHIP.md). The hashes
+below describe only the initial extraction, not the current implementation.
 
 ## Initial component SHA-256
 
