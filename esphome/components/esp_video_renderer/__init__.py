@@ -23,6 +23,7 @@ CONF_WIDTH = "width"
 CONF_HEIGHT = "height"
 CONF_MAX_DECODE_WIDTH = "max_decode_width"
 CONF_MAX_DECODE_HEIGHT = "max_decode_height"
+CONF_FIT_TO_CONTAINER = "fit_to_container"
 CONF_FRAMERATE = "framerate"
 CONF_MAX_JPEG_BYTES = "max_jpeg_bytes"
 CONF_TASK_CORE = "task_core"
@@ -74,6 +75,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_HEIGHT, default=240): cv.int_range(min=8, max=640),
             cv.Optional(CONF_MAX_DECODE_WIDTH): cv.int_range(min=8, max=1280),
             cv.Optional(CONF_MAX_DECODE_HEIGHT): cv.int_range(min=8, max=1280),
+            cv.Optional(CONF_FIT_TO_CONTAINER, default=False): cv.boolean,
             cv.Optional(CONF_FRAMERATE, default=2): cv.int_range(min=1, max=60),
             cv.Optional(CONF_MAX_JPEG_BYTES, default=131072): cv.int_range(
                 min=4096, max=524288
@@ -114,7 +116,7 @@ FINAL_VALIDATE_SCHEMA = _final_validate
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    for key in (CONF_WIDTH, CONF_HEIGHT, CONF_FRAMERATE, CONF_MAX_JPEG_BYTES,
+    for key in (CONF_WIDTH, CONF_HEIGHT, CONF_FIT_TO_CONTAINER, CONF_FRAMERATE, CONF_MAX_JPEG_BYTES,
                 CONF_TASK_PRIORITY, CONF_TASK_STACK_SIZE,
                 CONF_TASK_STACK_IN_PSRAM, CONF_BUFFER_IN_PSRAM):
         cg.add(getattr(var, f"set_{key}")(config[key]))

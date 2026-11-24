@@ -109,6 +109,16 @@ def test_explicit_decode_input_preserves_small_output_surfaces(tmp_path):
         assert call in code
 
 
+@pytest.mark.parametrize("fit", [False, True], ids=["native-size", "contain"])
+def test_container_fit_codegen_is_explicit_and_defaults_to_native_size(tmp_path, fit):
+    setting = "  fit_to_container: true\n" if fit else ""
+    result = generate(tmp_path, renderer=setting)
+    assert result.returncode == 0, result.stdout + result.stderr
+    code = next(tmp_path.rglob("main.cpp")).read_text()
+    assert f"renderer->set_fit_to_container({str(fit).lower()})" in code
+    assert "renderer->set_width(320)" in code and "renderer->set_height(240)" in code
+
+
 @pytest.mark.parametrize("setting", [
     "  max_decode_width: 801\n",
     "  max_decode_width: 1288\n",

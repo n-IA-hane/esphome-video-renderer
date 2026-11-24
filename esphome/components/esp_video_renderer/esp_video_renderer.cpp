@@ -323,6 +323,8 @@ void EspVideoRenderer::attach_video_container(lv_obj_t *container) {
   if (container == nullptr || this->image_ != nullptr || this->is_failed())
     return;
   this->image_ = lv_image_create(container);
+  if (this->fit_to_container_)
+    lv_image_set_inner_align(this->image_, LV_IMAGE_ALIGN_CONTAIN);
   lv_obj_center(this->image_);
   lv_obj_add_flag(this->image_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_remove_flag(this->image_, LV_OBJ_FLAG_SCROLLABLE);
@@ -338,6 +340,15 @@ void EspVideoRenderer::refresh_ready_(lv_event_t *event) {
   if (renderer->presentation_in_flight_.exchange(false,
                                                  std::memory_order_acq_rel))
     renderer->enable_loop_soon_any_context();
+}
+
+void EspVideoRenderer::update_image_geometry_() {
+  if (this->fit_to_container_)
+    lv_obj_set_size(this->image_, lv_pct(100), lv_pct(100));
+  else
+    lv_obj_set_size(this->image_, this->image_descriptor_.header.w,
+                    this->image_descriptor_.header.h);
+  lv_obj_center(this->image_);
 }
 
 void EspVideoRenderer::loop() {
@@ -376,8 +387,7 @@ void EspVideoRenderer::loop() {
         static_cast<size_t>(surface.width) * surface.height * 2;
     this->image_descriptor_.data = surface.data;
     lv_image_set_src(this->image_, &this->image_descriptor_);
-    lv_obj_set_size(this->image_, surface.width, surface.height);
-    lv_obj_center(this->image_);
+    this->update_image_geometry_();
     lv_obj_remove_flag(this->image_, LV_OBJ_FLAG_HIDDEN);
     this->presentation_in_flight_.store(true, std::memory_order_release);
     this->visible_generation_ = surface.generation;

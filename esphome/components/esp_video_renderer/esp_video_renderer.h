@@ -38,6 +38,7 @@ public:
   void set_height(uint16_t value) { this->height_ = value; }
   void set_max_decode_width(uint16_t value) { this->max_decode_width_ = value; }
   void set_max_decode_height(uint16_t value) { this->max_decode_height_ = value; }
+  void set_fit_to_container(bool value) { this->fit_to_container_ = value; }
   void set_framerate(uint8_t value) { this->framerate_ = value; }
   void set_max_jpeg_bytes(size_t value) { this->max_jpeg_bytes_ = value; }
   void set_task_core(int8_t value) { this->task_core_ = value; }
@@ -105,12 +106,14 @@ protected:
   uint8_t task_priority_{5};
   int8_t task_core_{-1};
   bool task_stack_in_psram_{true}, buffer_in_psram_{true};
+  bool fit_to_container_{false};
   static void worker_entry_(void *ctx);
   void worker_();
   bool decode_(int input, int surface);
   void clear_pending_(); // mutex held; an in-flight decoder retains its input
   void release_setup_resources_(); // only before the worker has been started
   static void refresh_ready_(lv_event_t *event);
+  void update_image_geometry_();
 
   uint16_t width_{320}, height_{240};
   uint16_t max_decode_width_{0}, max_decode_height_{0};
