@@ -290,7 +290,8 @@ bool EspVideoRenderer::decode_(int input_index, int surface_index) {
   JpegDecodePlan plan;
   const uint32_t started = micros();
   if (!plan_baseline_jpeg(input.data, input.size, this->width_,
-                          this->height_, plan)) {
+                          this->height_, this->max_decode_width_,
+                          this->max_decode_height_, plan)) {
     this->decode_errors_.fetch_add(1, std::memory_order_relaxed);
     return false;
   }
@@ -420,6 +421,7 @@ void EspVideoRenderer::dump_state() const {
 void EspVideoRenderer::dump_config() {
   ESP_LOGCONFIG(TAG, "Software JPEG renderer: %ux%u, up to %u fps",
                 this->width_, this->height_, this->framerate_);
+  ESP_LOGCONFIG(TAG, "  Advertised JPEG input: %ux%u", this->get_max_decode_width(), this->get_max_decode_height());
   ESP_LOGCONFIG(TAG, "  Worker priority/core: %u/%d, stack: %u bytes (%s)",
                 this->task_priority_, this->task_core_,
                 static_cast<unsigned>(this->task_stack_size_),

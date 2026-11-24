@@ -92,10 +92,34 @@ def test_renderer_standalone_has_no_sip_dependency(tmp_path):
     assert "esp_video_renderer::EspVideoRenderer();" in code
     assert "voip_stack::VoipStack" not in code
     assert "USE_ESP_VIDEO_RENDERER_VOIP" not in defines
+    assert "renderer->set_max_decode_width(" not in code
+    assert "renderer->set_max_decode_height(" not in code
     assert not list(tmp_path.rglob("sip_transport.cpp"))
     manifest = yaml.safe_load(next(tmp_path.rglob("idf_component.yml")).read_text())
     assert manifest["dependencies"]["espressif/esp_jpeg"]["version"] == "1.3.2"
     assert "espressif/esp_new_jpeg" not in manifest["dependencies"]
+
+
+def test_explicit_decode_input_preserves_small_output_surfaces(tmp_path):
+    result = generate(tmp_path, renderer="  max_decode_width: 800\n  max_decode_height: 800\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    code = next(tmp_path.rglob("main.cpp")).read_text()
+    for call in ("renderer->set_width(320)", "renderer->set_height(240)",
+                 "renderer->set_max_decode_width(800)", "renderer->set_max_decode_height(800)"):
+        assert call in code
+
+
+@pytest.mark.parametrize("setting", [
+    "  max_decode_width: 801\n",
+    "  max_decode_width: 1288\n",
+    "  max_decode_height: 968\n",
+    "  width: 640\n  height: 480\n  max_decode_width: 1280\n  max_decode_height: 1280\n",
+    "  width: 64\n  max_decode_width: 264\n",
+])
+def test_decode_input_rejects_limits_beyond_native_reduction(tmp_path, setting):
+    result = generate(tmp_path, renderer=setting)
+    assert result.returncode != 0
+    assert "max_decode_" in result.stdout + result.stderr or "JPEG input" in result.stdout + result.stderr
 
 
 def test_renderer_voip_sink_is_automatic(tmp_path):

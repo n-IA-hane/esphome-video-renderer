@@ -99,3 +99,48 @@ int main() {
         "-I", str(SOURCE), str(harness), "-o", str(binary),
     ], check=True, capture_output=True, text=True)
     subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+
+
+def test_explicit_input_limits_preserve_native_planner_hard_bounds(tmp_path):
+    harness = tmp_path / "input_limits.cpp"
+    harness.write_text(r'''
+#include "jpeg_frame.h"
+#include <cassert>
+#include <vector>
+using namespace esphome::esp_video_renderer;
+std::vector<uint8_t> frame(unsigned width,unsigned height) {
+ std::vector<uint8_t> jpeg={0xff,0xd8,0xff,0xc0,0,11,8,0,8,0,8,1,1,0x11,0,
+                           0xff,0xda,0,8,1,1,0,0,63,0,11,0xff,0xd9};
+ jpeg[7]=height>>8;jpeg[8]=height;jpeg[9]=width>>8;jpeg[10]=width;return jpeg;
+}
+int main() {
+ JpegDecodePlan plan;
+ auto jpeg=frame(800,800);
+ assert(plan_baseline_jpeg(jpeg.data(),jpeg.size(),320,240,800,800,plan));
+ assert(plan.input.width==800&&plan.input.height==800&&plan.scale==2);
+ assert(plan.output.width==200&&plan.output.height==200);
+ assert(plan_jpeg_geometry({800,800},320,240,800,800,plan));
+ assert(!plan_jpeg_geometry({800,800},320,240,320,240,plan));
+ assert(!plan_baseline_jpeg(jpeg.data(),jpeg.size(),320,240,320,240,plan));
+ // Raw submissions without an explicit limit retain the established reduction.
+ assert(plan_baseline_jpeg(jpeg.data(),jpeg.size(),320,240,0,0,plan));
+ for(auto input:std::vector<JpegGeometry>{{808,800},{800,808},{1288,720},{1280,968},{1280,1280}}) {
+  jpeg=frame(input.width,input.height);
+  assert(!plan_baseline_jpeg(jpeg.data(),jpeg.size(),320,240,800,800,plan));
+ }
+ jpeg=frame(1280,1280);
+ assert(!plan_baseline_jpeg(jpeg.data(),jpeg.size(),640,480,1280,1280,plan));
+ assert(!plan_jpeg_geometry({1280,1280},640,480,1280,1280,plan));
+ jpeg=frame(40,8);
+ assert(!plan_baseline_jpeg(jpeg.data(),jpeg.size(),8,8,800,800,plan));
+ jpeg=frame(800,800);jpeg[3]=0xc2;
+ assert(!plan_baseline_jpeg(jpeg.data(),jpeg.size(),320,240,800,800,plan));
+}
+''')
+    binary = tmp_path / "input_limits"
+    subprocess.run([
+        "g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+        "-I", str(SOURCE), str(harness), "-o", str(binary),
+    ], check=True, capture_output=True, text=True)
+    subprocess.run([str(binary)], check=True, capture_output=True, text=True)

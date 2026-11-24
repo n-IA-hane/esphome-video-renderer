@@ -7,6 +7,7 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "jpeg_decoder.h"
+#include "jpeg_frame.h"
 #include "esphome/components/video_renderer/video_renderer.h"
 #include "lvgl.h"
 #include <atomic>
@@ -35,6 +36,8 @@ public:
   float get_setup_priority() const override { return setup_priority::DATA; }
   void set_width(uint16_t value) { this->width_ = value; }
   void set_height(uint16_t value) { this->height_ = value; }
+  void set_max_decode_width(uint16_t value) { this->max_decode_width_ = value; }
+  void set_max_decode_height(uint16_t value) { this->max_decode_height_ = value; }
   void set_framerate(uint8_t value) { this->framerate_ = value; }
   void set_max_jpeg_bytes(size_t value) { this->max_jpeg_bytes_ = value; }
   void set_task_core(int8_t value) { this->task_core_ = value; }
@@ -46,6 +49,8 @@ public:
   void set_buffer_in_psram(bool value) { this->buffer_in_psram_ = value; }
   uint16_t get_width() const { return this->width_; }
   uint16_t get_height() const { return this->height_; }
+  uint16_t get_max_decode_width() const { return this->max_decode_width_ == 0 ? this->width_ : this->max_decode_width_; }
+  uint16_t get_max_decode_height() const { return this->max_decode_height_ == 0 ? this->height_ : this->max_decode_height_; }
   uint8_t get_framerate() const { return this->framerate_; }
   size_t get_max_jpeg_bytes() const { return this->max_jpeg_bytes_; }
 
@@ -55,11 +60,13 @@ public:
   // it.
   video_renderer::RendererCapabilities get_capabilities() const override {
     return {{video_renderer::Codec::JPEG, this->width_, this->height_, this->framerate_},
-            this->width_, this->height_, this->max_jpeg_bytes_, false};
+            this->get_max_decode_width(), this->get_max_decode_height(), this->max_jpeg_bytes_, false};
   }
   bool prepare(const video_renderer::StreamFormat &format) override {
+    JpegDecodePlan plan;
     return format.valid() && format.codec == video_renderer::Codec::JPEG &&
-           format.width <= this->width_ && format.height <= this->height_ &&
+           plan_jpeg_geometry({format.width, format.height}, this->width_, this->height_,
+                              this->get_max_decode_width(), this->get_max_decode_height(), plan) &&
            this->prepare(format.max_fps);
   }
   bool submit_frame(const video_renderer::EncodedFrame &frame) override {
@@ -106,6 +113,7 @@ protected:
   static void refresh_ready_(lv_event_t *event);
 
   uint16_t width_{320}, height_{240};
+  uint16_t max_decode_width_{0}, max_decode_height_{0};
   uint8_t framerate_{2}, session_fps_{2};
   size_t max_jpeg_bytes_{131072}, surface_capacity_{0};
   Input inputs_[2]{};

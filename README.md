@@ -97,6 +97,8 @@ describes the hardware renderer separately.
 | --- | --- | --- |
 | `width` | `320` | Maximum decoded width, 8-640, multiple of 8. |
 | `height` | `240` | Maximum decoded height, 8-640, multiple of 8. |
+| `max_decode_width` | omitted | Optional JPEG input width, multiple of 8, at most 1280 and four times `width`. Sessions default to `width`. |
+| `max_decode_height` | omitted | Optional JPEG input height, multiple of 8, at most 1280 and four times `height`. Sessions default to `height`. |
 | `framerate` | `2` | Configured admission ceiling, 1-60 FPS. Actual decode and display rates depend on the board and workload. |
 | `max_jpeg_bytes` | `131072` | Bytes in each compressed slot, 4096-524288. |
 | `task_core` | `any` | Worker affinity: `any`, `0` or `1`; the core must exist. |
@@ -152,6 +154,15 @@ finest reduction that fits both dimensions. For a 320x240 surface, 640x360 and
 1280x720 input both produce 320x180 output. Smaller images retain native size.
 Odd reduced dimensions round down, dropping the last partial row or column.
 Images are centered without upscaling or aspect distortion.
+
+An explicit `max_decode_width` or `max_decode_height` limits both declared
+streams and actual encoded frames. Omitted input limits preserve the raw
+`submit_jpeg()` reduction envelope above; declared sessions still default to
+`width` and `height`. The input rectangle may not exceed 1,228,800 pixels.
+For example, a 320x240 renderer with both input limits set to 800 can receive
+800x800 JPEG and decode it directly to a centered 200x200 image. The compressed
+buffers, RGB565 surfaces and worker remain the same size. A larger input raises
+decode work even though it does not reserve a larger decoded surface.
 
 One worker blocks on notifications when idle. It owns two JPEG slots, and keeps
 only the latest queued image while an in-flight decode retains its own slot.

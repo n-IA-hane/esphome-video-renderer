@@ -21,6 +21,8 @@ AUTO_LOAD = ["video_renderer"]
 
 CONF_WIDTH = "width"
 CONF_HEIGHT = "height"
+CONF_MAX_DECODE_WIDTH = "max_decode_width"
+CONF_MAX_DECODE_HEIGHT = "max_decode_height"
 CONF_FRAMERATE = "framerate"
 CONF_MAX_JPEG_BYTES = "max_jpeg_bytes"
 CONF_TASK_CORE = "task_core"
@@ -56,6 +58,11 @@ def _dimensions(config):
             raise cv.Invalid(f"{key} must be a multiple of 8")
     if config[CONF_WIDTH] * config[CONF_HEIGHT] > 640 * 480:
         raise cv.Invalid("software renderer supports at most 640x480 pixels")
+    for output, limit in ((CONF_WIDTH, CONF_MAX_DECODE_WIDTH), (CONF_HEIGHT, CONF_MAX_DECODE_HEIGHT)):
+        if limit in config and (config[limit] % 8 or config[limit] > min(1280, config[output] * 4)):
+            raise cv.Invalid(f"{limit} must be a multiple of 8 within the output's fourfold decode bound")
+    if config.get(CONF_MAX_DECODE_WIDTH, config[CONF_WIDTH]) * config.get(CONF_MAX_DECODE_HEIGHT, config[CONF_HEIGHT]) > 1280 * 960:
+        raise cv.Invalid("JPEG input supports at most 1280x960 pixels")
     return config
 
 
@@ -65,6 +72,8 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(EspVideoRenderer),
             cv.Optional(CONF_WIDTH, default=320): cv.int_range(min=8, max=640),
             cv.Optional(CONF_HEIGHT, default=240): cv.int_range(min=8, max=640),
+            cv.Optional(CONF_MAX_DECODE_WIDTH): cv.int_range(min=8, max=1280),
+            cv.Optional(CONF_MAX_DECODE_HEIGHT): cv.int_range(min=8, max=1280),
             cv.Optional(CONF_FRAMERATE, default=2): cv.int_range(min=1, max=60),
             cv.Optional(CONF_MAX_JPEG_BYTES, default=131072): cv.int_range(
                 min=4096, max=524288
@@ -109,6 +118,9 @@ async def to_code(config):
                 CONF_TASK_PRIORITY, CONF_TASK_STACK_SIZE,
                 CONF_TASK_STACK_IN_PSRAM, CONF_BUFFER_IN_PSRAM):
         cg.add(getattr(var, f"set_{key}")(config[key]))
+    for key in (CONF_MAX_DECODE_WIDTH, CONF_MAX_DECODE_HEIGHT):
+        if key in config:
+            cg.add(getattr(var, f"set_{key}")(config[key]))
     cg.add(var.set_task_core(-1 if config[CONF_TASK_CORE] == "any" else config[CONF_TASK_CORE]))
     add_idf_component(name="espressif/esp_jpeg", ref="1.3.2")
     if config[CONF_TASK_STACK_IN_PSRAM]:

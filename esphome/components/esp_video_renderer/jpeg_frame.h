@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -117,23 +118,28 @@ inline bool inspect_baseline_jpeg(const uint8_t *data, size_t size,
   return false;
 }
 
-// Bound compressed input work independently of the fixed output surfaces.
-// The finest supported reduction that fits is used, without an extra resize
-// buffer. Keep the native frame bounded even when the output is very small.
-inline bool plan_baseline_jpeg(const uint8_t *data, size_t size,
-                              uint16_t width, uint16_t height,
-                              JpegDecodePlan &plan) {
-  plan = {};
-  if (width == 0 || height == 0)
-    return false;
+inline JpegGeometry jpeg_input_bounds(uint16_t width, uint16_t height,
+                                     uint16_t max_decode_width,
+                                     uint16_t max_decode_height) {
+  // Zero preserves the raw JPEG envelope; sessions supply their advertised limit.
   const uint32_t width_limit = uint32_t(width) * 4;
   const uint32_t height_limit = uint32_t(height) * 4;
-  const uint16_t native_width = width_limit < 1280 ? width_limit : 1280;
-  const uint16_t native_height = height_limit < 1280 ? height_limit : 1280;
-  if (!inspect_baseline_jpeg(data, size, native_width, native_height,
-                             plan.input) ||
-      uint32_t(plan.input.width) * plan.input.height > 1280U * 960U)
+  const uint16_t native_width = std::min<uint32_t>(1280, width_limit);
+  const uint16_t native_height = std::min<uint32_t>(1280, height_limit);
+  return {max_decode_width == 0 ? native_width : std::min(max_decode_width, native_width),
+          max_decode_height == 0 ? native_height : std::min(max_decode_height, native_height)};
+}
+
+// One plan bounds declared streams and encoded JPEGs against the same surface.
+inline bool plan_jpeg_geometry(JpegGeometry input, uint16_t width, uint16_t height,
+                              uint16_t max_decode_width, uint16_t max_decode_height,
+                              JpegDecodePlan &plan) {
+  plan = {};
+  const auto limits = jpeg_input_bounds(width, height, max_decode_width, max_decode_height);
+  if (input.width == 0 || input.height == 0 || input.width > limits.width ||
+      input.height > limits.height || uint32_t(input.width) * input.height > 1280U * 960U)
     return false;
+  plan.input = input;
   for (uint8_t scale = 0; scale <= 2; ++scale) {
     // esp_jpeg reports integer-divided dimensions, including odd-sized inputs.
     const uint16_t output_width = plan.input.width >> scale;
@@ -146,6 +152,24 @@ inline bool plan_baseline_jpeg(const uint8_t *data, size_t size,
     }
   }
   return false;
+}
+
+// Reduction writes directly into the fixed surfaces without a resize buffer.
+inline bool plan_baseline_jpeg(const uint8_t *data, size_t size,
+                              uint16_t width, uint16_t height,
+                              uint16_t max_decode_width, uint16_t max_decode_height,
+                              JpegDecodePlan &plan) {
+  plan = {};
+  const auto limits = jpeg_input_bounds(width, height, max_decode_width, max_decode_height);
+  JpegGeometry input;
+  return inspect_baseline_jpeg(data, size, limits.width, limits.height, input) &&
+         plan_jpeg_geometry(input, width, height, max_decode_width, max_decode_height, plan);
+}
+
+inline bool plan_baseline_jpeg(const uint8_t *data, size_t size,
+                              uint16_t width, uint16_t height,
+                              JpegDecodePlan &plan) {
+  return plan_baseline_jpeg(data, size, width, height, 0, 0, plan);
 }
 
 } // namespace esphome::esp_video_renderer

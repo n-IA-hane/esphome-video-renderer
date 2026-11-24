@@ -10,7 +10,7 @@ SOURCE = ROOT / "esphome/components/esp_video_renderer"
 
 
 @pytest.mark.parametrize("psram", [True, False])
-@pytest.mark.parametrize("scenario", [0, 1, 2], ids=["lifecycle", "pending-handoff", "continuous-producer"])
+@pytest.mark.parametrize("scenario", [0, 1, 2, 3], ids=["lifecycle", "pending-handoff", "continuous-producer", "explicit-input"])
 def test_borrowed_jpeg_generations_and_display_surface_lifetime(tmp_path, psram, scenario):
     headers = {
         "esphome/core/defines.h": "#pragma once\n#define USE_ESP_IDF\n",
@@ -154,10 +154,31 @@ void wait_decode(unsigned count) {
 void wait_pending(Renderer&r){for(unsigned n=0;n<1000&&!r.has_pending();n++)std::this_thread::sleep_for(std::chrono::milliseconds(1));assert(r.has_pending());}
 int main(int argc,char**argv){
  const unsigned scenario=argc>1?std::atoi(argv[1]):0;
- Renderer r;r.set_width(8);r.set_height(8);r.set_max_jpeg_bytes(64);r.set_framerate(2);r.set_task_stack_in_psram(expected_external);r.set_buffer_in_psram(expected_external);r.setup();assert(!r.is_failed());assert(allocation_count==6);
+ Renderer r;r.set_width(scenario==3?320:8);r.set_height(scenario==3?240:8);r.set_max_jpeg_bytes(64);r.set_framerate(2);r.set_task_stack_in_psram(expected_external);r.set_buffer_in_psram(expected_external);r.setup();assert(!r.is_failed());assert(allocation_count==6);
  lv_display_t display;lv_obj_t container{&display};r.attach_video_container(&container);
  uint8_t a[]={0xff,0xd8,0xff,0xc0,0,11,8,0,8,0,8,1,1,0x11,0,
               0xff,0xda,0,8,1,1,0,0,63,0,11,0xff,0xd9};
+ if(scenario==3){
+  auto caps=r.get_capabilities();
+  assert(caps.preferred.width==320&&caps.preferred.height==240);
+  assert(caps.max_decode_width==320&&caps.max_decode_height==240);
+  assert(!r.prepare({esphome::video_renderer::Codec::JPEG,800,800,2}));
+  r.set_max_decode_width(800);r.set_max_decode_height(800);caps=r.get_capabilities();
+  assert(caps.preferred.width==320&&caps.preferred.height==240);
+  assert(caps.max_decode_width==800&&caps.max_decode_height==800);
+  assert(!r.prepare({esphome::video_renderer::Codec::JPEG,808,800,2}));
+  assert(!r.prepare({esphome::video_renderer::Codec::H264,800,800,2}));
+  assert(r.prepare({esphome::video_renderer::Codec::JPEG,800,800,2})&&r.set_active(true));
+  const auto allocated=allocation_count;
+  a[7]=3;a[8]=32;a[9]=3;a[10]=32;assert(r.submit_jpeg(a,sizeof a));
+  wait_decode(1);wait_pending(r);r.loop();
+  assert(image.src->header.w==200&&image.src->header.h==200&&image.src->data_size==80000);
+  refresh_ready(display);fake_ms=500;a[10]=40;assert(r.submit_jpeg(a,sizeof a));
+  for(unsigned n=0;n<1000&&!r.errors();n++)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  assert(r.errors()==1&&completed_decodes==1&&allocation_count==allocated);
+  assert(image.src->header.w==200&&image.src->header.h==200);
+  r.stop();r.loop();r.on_shutdown();join_tasks();r.release_setup_resources_();return 0;
+ }
  if(scenario==1){
   r.set_framerate(15);assert(r.start());
   {std::lock_guard lock(decode_mutex);hold_decode=true;entered_decode=false;}
