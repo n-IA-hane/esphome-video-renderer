@@ -10,7 +10,7 @@ SOURCE = ROOT / "esphome/components/esp_video_renderer"
 
 
 @pytest.mark.parametrize("psram", [True, False])
-@pytest.mark.parametrize("scenario", [0, 1, 2, 3, 4], ids=["lifecycle", "pending-handoff", "continuous-producer", "explicit-input", "container-fit"])
+@pytest.mark.parametrize("scenario", [0, 1, 2, 3], ids=["lifecycle", "pending-handoff", "continuous-producer", "explicit-input"])
 def test_borrowed_jpeg_generations_and_display_surface_lifetime(tmp_path, psram, scenario):
     headers = {
         "esphome/core/defines.h": "#pragma once\n#define USE_ESP_IDF\n",
@@ -111,9 +111,7 @@ completed_decodes++;decode_cv.notify_all();return ESP_OK;}
 constexpr int LV_OBJ_FLAG_HIDDEN=1,LV_OBJ_FLAG_SCROLLABLE=2,LV_EVENT_REFR_READY=3,LV_IMAGE_HEADER_MAGIC=0x19,LV_COLOR_FORMAT_RGB565=18;
 struct lv_image_dsc_t {struct {unsigned magic=0,cf=0,w=0,h=0,stride=0;}header;size_t data_size=0;const uint8_t*data=nullptr;};
 struct lv_event_t{void*data;};struct lv_display_t {void(*callback)(lv_event_t*)=nullptr;void*ctx=nullptr;};
-constexpr int LV_IMAGE_ALIGN_CONTAIN=1;
-constexpr int lv_pct(int value){return -1000-value;}
-struct lv_obj_t{lv_display_t*display;const lv_image_dsc_t*src=nullptr;unsigned flags=0;int width=0,height=0,inner_align=0;};
+struct lv_obj_t{lv_display_t*display;const lv_image_dsc_t*src=nullptr;unsigned flags=0;};
 inline lv_obj_t image;inline lv_obj_t*lv_image_create(lv_obj_t*c){image.display=c->display;return &image;}
 inline void lv_obj_center(lv_obj_t*){} inline void lv_obj_add_flag(lv_obj_t*i,int f){i->flags|=f;}
 inline void lv_obj_remove_flag(lv_obj_t*i,int f){i->flags&=~f;}
@@ -121,8 +119,7 @@ inline lv_display_t*lv_obj_get_display(lv_obj_t*i){return i->display;}
 inline void lv_display_add_event_cb(lv_display_t*d,void(*cb)(lv_event_t*),int,void*ctx){d->callback=cb;d->ctx=ctx;}
 inline void*lv_event_get_user_data(lv_event_t*e){return e->data;}
 inline void lv_image_set_src(lv_obj_t*i,const lv_image_dsc_t*d){i->src=d;}
-inline void lv_image_set_inner_align(lv_obj_t*i,int value){i->inner_align=value;}
-inline void lv_obj_set_size(lv_obj_t*i,int width,int height){i->width=width;i->height=height;} inline void lv_obj_invalidate(lv_obj_t*){}
+inline void lv_obj_set_size(lv_obj_t*,unsigned,unsigned){} inline void lv_obj_invalidate(lv_obj_t*){}
 inline void refresh_ready(lv_display_t&d){lv_event_t e{d.ctx};d.callback(&e);}
 """,
     }
@@ -157,11 +154,11 @@ void wait_decode(unsigned count) {
 void wait_pending(Renderer&r){for(unsigned n=0;n<1000&&!r.has_pending();n++)std::this_thread::sleep_for(std::chrono::milliseconds(1));assert(r.has_pending());}
 int main(int argc,char**argv){
  const unsigned scenario=argc>1?std::atoi(argv[1]):0;
- Renderer r;r.set_width(scenario>=3?320:8);r.set_height(scenario>=3?240:8);r.set_fit_to_container(scenario==4);r.set_max_jpeg_bytes(64);r.set_framerate(2);r.set_task_stack_in_psram(expected_external);r.set_buffer_in_psram(expected_external);r.setup();assert(!r.is_failed());assert(allocation_count==6);
+ Renderer r;r.set_width(scenario==3?320:8);r.set_height(scenario==3?240:8);r.set_max_jpeg_bytes(64);r.set_framerate(2);r.set_task_stack_in_psram(expected_external);r.set_buffer_in_psram(expected_external);r.setup();assert(!r.is_failed());assert(allocation_count==6);
  lv_display_t display;lv_obj_t container{&display};r.attach_video_container(&container);
  uint8_t a[]={0xff,0xd8,0xff,0xc0,0,11,8,0,8,0,8,1,1,0x11,0,
               0xff,0xda,0,8,1,1,0,0,63,0,11,0xff,0xd9};
- if(scenario>=3){
+ if(scenario==3){
   auto caps=r.get_capabilities();
   assert(caps.preferred.width==320&&caps.preferred.height==240);
   assert(caps.max_decode_width==320&&caps.max_decode_height==240);
@@ -176,20 +173,6 @@ int main(int argc,char**argv){
   a[7]=3;a[8]=32;a[9]=3;a[10]=32;assert(r.submit_jpeg(a,sizeof a));
   wait_decode(1);wait_pending(r);r.loop();
   assert(image.src->header.w==200&&image.src->header.h==200&&image.src->data_size==80000);
-  if(scenario==4){
-   assert(image.width==lv_pct(100)&&image.height==lv_pct(100)&&image.inner_align==LV_IMAGE_ALIGN_CONTAIN);
-   const auto*front=image.src->data;
-   // Fitting changes widget geometry, never the descriptor or front-surface fence.
-   fake_ms=500;a[7]=1;a[8]=224;a[9]=2;a[10]=128;a[25]=22;assert(r.submit_jpeg(a,sizeof a));
-   wait_decode(2);wait_pending(r);r.loop();
-   assert(image.src->data==front&&front[0]==11&&image.src->header.w==200&&r.displayed()==1);
-   refresh_ready(display);r.loop();
-   assert(image.src->header.w==320&&image.src->header.h==240&&image.src->data_size==153600);
-   assert(image.width==lv_pct(100)&&image.height==lv_pct(100)&&image.src->data[0]==22&&r.displayed()==2);
-   assert(allocation_count==allocated);r.stop();r.loop();assert(!r.has_remote_frame());
-   r.on_shutdown();join_tasks();r.release_setup_resources_();return 0;
-  }
-  assert(image.width==200&&image.height==200&&image.inner_align==0);
   refresh_ready(display);fake_ms=500;a[10]=40;assert(r.submit_jpeg(a,sizeof a));
   for(unsigned n=0;n<1000&&!r.errors();n++)std::this_thread::sleep_for(std::chrono::milliseconds(1));
   assert(r.errors()==1&&completed_decodes==1&&allocation_count==allocated);

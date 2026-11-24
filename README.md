@@ -99,7 +99,6 @@ describes the hardware renderer separately.
 | `height` | `240` | Maximum decoded height, 8-640, multiple of 8. |
 | `max_decode_width` | omitted | Optional JPEG input width, multiple of 8, at most 1280 and four times `width`. Sessions default to `width`. |
 | `max_decode_height` | omitted | Optional JPEG input height, multiple of 8, at most 1280 and four times `height`. Sessions default to `height`. |
-| `fit_to_container` | `false` | Fit the decoded image inside its LVGL container, preserving aspect ratio and allowing display upscaling. |
 | `framerate` | `2` | Configured admission ceiling, 1-60 FPS. Actual decode and display rates depend on the board and workload. |
 | `max_jpeg_bytes` | `131072` | Bytes in each compressed slot, 4096-524288. |
 | `task_core` | `any` | Worker affinity: `any`, `0` or `1`; the core must exist. |
@@ -155,15 +154,6 @@ finest reduction that fits both dimensions. For a 320x240 surface, 640x360 and
 1280x720 input both produce 320x180 output. Smaller images retain native size.
 Odd reduced dimensions round down, dropping the last partial row or column.
 Images are centered without upscaling or aspect distortion.
-
-Set `fit_to_container: true` to fit the image to the container through LVGL's
-`CONTAIN` alignment. The image widget follows the container's content size;
-the decoded descriptor, its surface dimensions and the two existing RGB565
-buffers stay unchanged. A 200x200 decoded image can therefore fill a square
-360x360 container. A rectangular container fits the complete image with space
-on the remaining axis. This option adds LVGL draw work and does not promise a
-particular frame rate or decode latency. It does not change the hardware P4
-renderer. With the default `false`, native-size presentation is unchanged.
 
 An explicit `max_decode_width` or `max_decode_height` limits both declared
 streams and actual encoded frames. Omitted input limits preserve the raw
