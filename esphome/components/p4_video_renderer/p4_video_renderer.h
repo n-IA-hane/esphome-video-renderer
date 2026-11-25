@@ -275,9 +275,13 @@ protected:
   // frame; unlike a bool, a late old publication cannot reopen a new call.
   std::atomic<uint32_t> remote_frame_visible_{0};
 #endif
-  // The first-page repaint must complete before committing its pending pixels.
+  // Page/background repaints must complete before committing pending pixels.
   // Decoded storage remains pending through the blocking display transaction.
   std::atomic<bool> presentation_in_flight_{false};
+  // Main-loop-owned bounds of the last direct pixel commit. LVGL restores
+  // exposed pixels when a later frame no longer covers this rectangle.
+  lv_area_t presented_area_{};
+  bool presented_area_valid_{false};
   std::atomic<bool> surface_ever_presented_{false};
 #ifndef USE_P4_VIDEO_RENDERER_JPEG
   std::atomic<bool> remote_frame_visible_{false};

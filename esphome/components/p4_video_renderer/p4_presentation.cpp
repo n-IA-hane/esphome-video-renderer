@@ -60,6 +60,21 @@ bool P4VideoRenderer::present_surface_direct_(int index) {
   const int height = content_height * units / PPA_SCALE_UNITS;
   const int x = area.x1 + (container_width - width) / 2;
   const int y = area.y1 + (container_height - height) / 2;
+  const lv_area_t destination{x, y, x + width - 1, y + height - 1};
+  if (this->presented_area_valid_ &&
+      (destination.x1 > this->presented_area_.x1 ||
+       destination.y1 > this->presented_area_.y1 ||
+       destination.x2 < this->presented_area_.x2 ||
+       destination.y2 < this->presented_area_.y2)) {
+    // Direct display writes are outside LVGL's object tree. Ask its normal
+    // painter to restore the old region before drawing a smaller/moved frame;
+    // painting black here would destroy the application's actual background.
+    // Keep the decoded lease until REFR_READY wakes this main-loop owner.
+    this->presented_area_valid_ = false;
+    this->presentation_in_flight_.store(true, std::memory_order_release);
+    lv_obj_invalidate_area(lv_screen_active(), &this->presented_area_);
+    return false;
+  }
   ppa_srm_oper_config_t operation{};
   operation.in.buffer = this->surfaces_[index];
   operation.in.pic_w = input_width;
@@ -97,6 +112,10 @@ bool P4VideoRenderer::present_surface_direct_(int index) {
   const bool success = this->display_->draw_rgb565_transformed(
       operation, this->surface_data_size_[index], x, y, width, height,
       still_current, &token);
+  if (success) {
+    this->presented_area_ = destination;
+    this->presented_area_valid_ = true;
+  }
 #ifdef USE_P4_VIDEO_RENDERER_DEBUG
   update_max(this->rx_present_ppa_max_us_, micros() - started);
 #endif
@@ -108,6 +127,10 @@ void P4VideoRenderer::loop() {
   this->refresh_layout_();
   if (this->video_ended_pending_.exchange(false, std::memory_order_acq_rel)) {
     this->video_ended_trigger_.trigger();
+    this->presented_area_valid_ = false;
+    // A quick redial may already have a decoded frame. It must not be
+    // committed before this repaint, which would immediately erase it.
+    this->presentation_in_flight_.store(true, std::memory_order_release);
     lv_obj_invalidate(lv_screen_active());
   }
   if (xSemaphoreTake(this->presentation_mutex_, 0) != pdTRUE) {
@@ -170,9 +193,11 @@ void P4VideoRenderer::loop() {
     }
     // The driver has completed all accepted DMA before returning. Only now may
     // the worker reuse the single decoded pixel buffer, including on Stop.
-    int expected = pending;
-    this->pending_surface_.compare_exchange_strong(expected, -1,
-                                                   std::memory_order_acq_rel);
+    if (!this->presentation_in_flight_.load(std::memory_order_acquire)) {
+      int expected = pending;
+      this->pending_surface_.compare_exchange_strong(expected, -1,
+                                                     std::memory_order_acq_rel);
+    }
   }
   xSemaphoreGive(this->presentation_mutex_);
   if (first_frame &&
@@ -280,8 +305,8 @@ void P4VideoRenderer::display_refresh_ready_callback_(lv_event_t *event) {
 }
 
 void P4VideoRenderer::on_display_refresh_ready_() {
-  // LVGL's first page flush is complete. Pixels are committed by our main-loop
-  // owner, not by this callback or by the decoder worker.
+  // LVGL's page/background flush is complete. Pixels are committed by our
+  // main-loop owner, not by this callback or by the decoder worker.
   this->presentation_in_flight_.store(false, std::memory_order_release);
   if (this->rx_running_.load(std::memory_order_acquire) &&
       this->rx_active_.load(std::memory_order_acquire) &&

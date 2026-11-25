@@ -2,6 +2,9 @@
 
 ## 2026.12.0-dev
 
+- Restore exposed P4 video bounds through LVGL when aspect ratio, size or
+  position changes. The pending frame remains leased until the background
+  repaint completes; equal-geometry frames retain the direct transform path.
 - Move the hardware-accelerated P4 renderer into this repository alongside the
   S3 renderer. Both accept complete encoded frames through the same small,
   protocol-independent contract, with stream generations and explicit buffer

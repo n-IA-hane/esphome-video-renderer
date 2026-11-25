@@ -62,6 +62,14 @@ A first decoded frame may open its page; that page's initial LVGL refresh must
 finish before direct video commits. Stop revokes the generation and invalidates
 the page from the main loop. Ordinary page/control drawing remains with LVGL.
 
+When a new destination no longer covers the previously presented rectangle,
+the renderer invalidates the old bounds on the active screen. LVGL restores
+the application's background and widgets; `LV_EVENT_REFR_READY` then allows
+the main loop to commit the pending frame. The decoded buffer stays leased
+through that repaint and the display transaction. This handles aspect changes,
+shrink and movement without painting a hardcoded background or clearing each
+video frame. A stop or fast redial still passes through generation admission.
+
 Geometry preserves the former 1/16 quantization and RGB output budget. With
 800x800 decode bounds, 320x240 input in a 1280x720 rectangle produces 920x690
 logical pixels, despite the absence of an intermediate output allocation.
