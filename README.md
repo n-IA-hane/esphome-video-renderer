@@ -8,7 +8,7 @@ lifetime. Your application owns the image source, display configuration,
 container and page navigation.
 
 **ESP-IDF, ESP32-S3 or ESP32-P4, and LVGL are required.** The coordinated
-development baseline uses the official ESPHome 2026.11.0 release.
+development baseline uses the official ESPHome 2026.11.1 release.
 The default configuration also requires working PSRAM. This repository has its
 own development version in [VERSION](VERSION) and history in
 [CHANGELOG.md](CHANGELOG.md).
