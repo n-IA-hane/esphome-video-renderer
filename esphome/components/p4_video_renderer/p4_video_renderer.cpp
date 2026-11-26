@@ -347,17 +347,15 @@ bool P4VideoRenderer::set_active(bool active) {
   if (active && (!this->rx_running_.load(std::memory_order_acquire) ||
                  !this->rx_session_prepared_.load(std::memory_order_acquire)))
     return false;
-  this->rx_active_.store(active, std::memory_order_release);
   if (active) {
-#ifdef USE_P4_VIDEO_RENDERER_H264
     this->cadence_.reset(std::max<uint8_t>(
         1, std::min(this->framerate_, this->rx_format_.max_fps == 0
                                           ? this->framerate_
                                           : this->rx_format_.max_fps)));
-#endif
 #ifdef USE_P4_VIDEO_RENDERER_H264
     this->waiting_for_key_frame_.store(true, std::memory_order_release);
 #endif
+    this->rx_active_.store(true, std::memory_order_release);
     return true;
   }
 
@@ -493,6 +491,16 @@ bool P4VideoRenderer::submit_frame(
 #ifdef USE_P4_VIDEO_RENDERER_DEBUG
     this->rx_busy_drops_.fetch_add(1, std::memory_order_relaxed);
     this->rx_busy_au_drops_.fetch_add(1, std::memory_order_relaxed);
+#endif
+    return false;
+  }
+  // JPEG admission protects decoder work, independently of a producer's
+  // presentation clock. Arrival pacing also covers absent/backwards timestamps;
+  // the original presentation-time validity is never rewritten.
+  if (!this->cadence_.accept(micros())) {
+    this->rx_slot_state_.store(0, std::memory_order_release);
+#ifdef USE_P4_VIDEO_RENDERER_DEBUG
+    this->rx_rate_drops_.fetch_add(1, std::memory_order_relaxed);
 #endif
     return false;
   }

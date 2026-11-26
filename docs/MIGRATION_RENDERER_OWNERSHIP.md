@@ -90,3 +90,24 @@ callback is not invoked. True transfers a supplied lease, which the renderer
 releases exactly once, including on replacement or stop. Without a lease, data
 is borrowed only during `submit_frame` and must be copied before asynchronous
 use. H.264 requires leases; JPEG copies admitted input synchronously.
+
+
+## JPEG work admission
+
+P4 JPEG admission belongs to `P4VideoRenderer::submit_frame`. It caps work at
+`min(configured framerate, prepared stream max_fps)` before the encoded copy and
+hardware decode. Direct producers and the VoIP adapter therefore share the
+same policy. The adapter only translates format, clock and lease metadata.
+
+The JPEG budget uses monotonic arrival microseconds, independently of the
+producer's presentation timeline. Missing, stalled or backward presentation
+timestamps cannot bypass the work cap. A valid zero remains valid, and no
+arrival timestamp is substituted into the producer's presentation metadata.
+A busy encoded slot or pending display surface does not spend admission credit.
+Activation starts a fresh cadence phase. Rejected frames retain their leases;
+an accepted JPEG lease is released exactly once after its synchronous copy.
+
+H.264 still decodes dependent access units before applying its presentation
+cadence. Reference pictures and its existing lease, recovery and key-frame
+policy are unchanged. The host regression cases count admissions, copies and
+release callbacks; physical P4 throughput remains a hardware measurement.

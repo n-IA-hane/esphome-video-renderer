@@ -228,9 +228,7 @@ protected:
 #endif
 
   video_renderer::StreamFormat rx_format_{};
-#ifdef USE_P4_VIDEO_RENDERER_H264
   video_renderer::FrameCadence cadence_{};
-#endif
   std::atomic<bool> rx_running_{false};
   std::atomic<bool> rx_active_{false};
   std::atomic<bool> rx_session_prepared_{false};
